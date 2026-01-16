@@ -13,8 +13,8 @@ def load(conf):
     img_train = img_train.reshape(60000,784).astype('float32') / 255
     img_test = img_test.reshape(10000,784).astype('float32') / 255
 
-    label_train = tf.one_hot(label_train.astype('float32'),10)
-    label_test = tf.one_hot(label_test.astype('float32'),10)
+    label_train = tf.one_hot(label_train.astype('int32'),10)
+    label_test = tf.one_hot(label_test.astype('int32'),10)
 
     #
     num_val_dataset = 5000
@@ -40,8 +40,7 @@ def load(conf):
 
 
     if conf.f_train_time_const:
-        test_dataset = tf.data.Dataset.from_tensor_slices((img_train[conf.idx_test_dataset_s:conf.idx_test_dataset_s+conf.num_test_dataset], label_train[conf.idx_test_dataset_s:conf.idx_test_dataset_s+conf.num_test_dataset],tf.float32))
-
+        test_dataset = tf.data.Dataset.from_tensor_slices((img_train[conf.idx_test_dataset_s:conf.idx_test_dataset_s+conf.num_test_dataset], label_train[conf.idx_test_dataset_s:conf.idx_test_dataset_s+conf.num_test_dataset]))
 
     val_dataset = val_dataset.batch(conf.batch_size)
     test_dataset = test_dataset.batch(conf.batch_size)

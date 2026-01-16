@@ -18,7 +18,7 @@ import itertools
 #
 
 #
-cce = tf.keras.losses.CategoricalCrossentropy()
+cce = tf.keras.losses.CategoricalCrossentropy(from_logits=True)
 
 # TODO: remove
 def loss(predictions, labels):
@@ -27,8 +27,8 @@ def loss(predictions, labels):
 
 def loss_cross_entoropy(predictions, labels):
 
-    logits = tf.nn.softmax(predictions)
-    loss_value = cce(labels,logits)
+    #logits = tf.nn.softmax(predictions)
+    loss_value = cce(labels,predictions)
 
     return loss_value
 
@@ -120,6 +120,7 @@ def train_one_epoch_mnist_cnn(model, optimizer, dataset):
     avg_loss = tf.keras.metrics.Mean('loss')
     accuracy = tf.keras.metrics.Accuracy('accuracy')
 
+    step_count = 0
 
     #for (batch, (images, labels)) in enumerate(tfe.Iterator(dataset)):
     #for (batch, (images, labels)) in enumerate(tf.Iterator(dataset)):
@@ -133,8 +134,28 @@ def train_one_epoch_mnist_cnn(model, optimizer, dataset):
 
             predictions = model(images, f_training=True)
 
+            # --- 调试代码 START ---
+            if step_count == 0:
+                print("\n--- DEBUG INFO (Step 0) ---")
+                print("Labels sample:", labels[0].numpy())
+                print("Predictions sample (Logits):", predictions[0].numpy())
+                
+                # 检查 Predictions 是否包含 NaN
+                if np.isnan(predictions.numpy()).any():
+                    print("!!! CRITICAL: Model Output contains NaN !!!")
+                else:
+                    print("Model Output looks OK (no NaN).")
+            # --- 调试代码 END ---
+
             #loss_value = loss(predictions, labels)
             loss_value = loss_cross_entoropy(predictions, labels)
+
+            # --- 调试代码 START ---
+            if step_count == 0:
+                print("Computed Loss Value:", loss_value.numpy())
+                step_count += 1
+            # --- 调试代码 END ---
+
             avg_loss(loss_value)
 
             accuracy(tf.argmax(predictions,axis=1,output_type=tf.int64), tf.argmax(labels,axis=1,output_type=tf.int64))

@@ -7,6 +7,7 @@ import tensorflow as tf
 #import tensorflow.contrib.eager as tfe
 
 import math
+import os
 
 import train
 from tqdm import tqdm
@@ -161,13 +162,16 @@ def test(model, dataset, num_dataset, conf, f_val=False, epoch=0, f_val_snn=Fals
                 # tssi: time step save interval
                 #f_name_result = conf.path_result_root+'/'+conf.date+'_'+conf.neural_coding
                 #f_name_result = conf.path_result_root+'/'+conf.input_spike_mode+conf.neural_coding+'_ts-'+str(conf.time_step)+'_tssi-'+str(conf.time_step_save_interval)
-                f_name_result = '{}/{}_{}_ts-{}_tssi-{}_vth-{}'.format(conf.path_result_root,conf.input_spike_mode,conf.neural_coding,str(conf.time_step),str(conf.time_step_save_interval),conf.n_init_vth)
+                f_name_result = '{}{}_{}_ts-{}_tssi-{}_vth-{}'.format(conf.path_result_root,conf.input_spike_mode,conf.neural_coding,str(conf.time_step),str(conf.time_step_save_interval),conf.n_init_vth)
 
                 if conf.neural_coding=="TEMPORAL":
                     f_name_result += outfile_name_temporal(conf)
 
                 f_name_result += '.xlsx'
 
+                result_dir = os.path.dirname(f_name_result)
+                if not os.path.exists(result_dir) and result_dir != '':
+                    os.makedirs(result_dir)
                 df.to_excel(f_name_result)
                 print("output file: "+f_name_result)
 

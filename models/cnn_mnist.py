@@ -1,4 +1,5 @@
 import tensorflow as tf
+import threading
 #import tensorflow.contrib.eager as tfe
 
 #from tensorflow.contrib.layers.python.layers import initializers
@@ -201,6 +202,7 @@ class MNISTModel_CNN(tf.keras.layers.Layer):
         #self.dict_shape['conv2']=self.shape_out_conv2
         #self.dict_shape['conv2_p']=self.shape_out_conv2_p
         #self.dict_shape['fc1']=self.shape_out_fc1
+        self.dict_shape['in']=self.in_shape
         self.dict_shape['conv1']=self.shape_out_conv1
         self.dict_shape['conv1_p']=self.shape_out_conv1_p
         self.dict_shape['conv2']=self.shape_out_conv2
@@ -228,6 +230,7 @@ class MNISTModel_CNN(tf.keras.layers.Layer):
 
 
         if self.conf.f_write_stat or self.conf.f_comp_act:
+            self.dict_stat_w['in']=np.zeros([1,]+self._input_shape[1:])
             self.dict_stat_w['conv1']=np.zeros([1,]+self.shape_out_conv1[1:])
             self.dict_stat_w['conv2']=np.zeros([1,]+self.shape_out_conv2[1:])
             self.dict_stat_w['fc1']=np.zeros([1,]+self.shape_out_fc1[1:])
@@ -611,7 +614,7 @@ class MNISTModel_CNN(tf.keras.layers.Layer):
     ###########################################################
     ## call function
     ###########################################################
-    def call(self, inputs, f_training, f_val_snn=False):
+    def call(self, inputs, f_training, f_val_snn=False, epoch=0, **kwargs):
 
         nn_mode = {
             'ANN': self.call_ann if not self.conf.f_surrogate_training_model else self.call_ann_surrogate_training,
@@ -688,7 +691,7 @@ class MNISTModel_CNN(tf.keras.layers.Layer):
         a_conv2 = tf.nn.relu(s_conv2_bn)
         p_conv2 = self.pool2d(a_conv2)
 
-        s_flat = tf.compat.v1.layers.flatten(p_conv2, data_format=self.data_format)
+        s_flat = tf.keras.layers.Flatten(data_format=self.data_format)(p_conv2)
 
         if f_training:
             s_flat = self.dropout(s_flat,training=f_training)
@@ -709,6 +712,7 @@ class MNISTModel_CNN(tf.keras.layers.Layer):
 
         # write stat
         if (self.conf.f_write_stat) and (not self.f_1st_iter):
+            self.dict_stat_w['in']=np.append(self.dict_stat_w['in'],x.numpy(),axis=0)
             self.dict_stat_w['conv1']=np.append(self.dict_stat_w['conv1'],a_conv1.numpy(),axis=0)
             self.dict_stat_w['conv2']=np.append(self.dict_stat_w['conv2'],a_conv2.numpy(),axis=0)
             self.dict_stat_w['fc1']=np.append(self.dict_stat_w['fc1'],a_fc1.numpy(),axis=0)
@@ -1561,9 +1565,11 @@ class MNISTModel_CNN(tf.keras.layers.Layer):
         #stat_file='./stat/dist_act_neuron_trainset_'+self.conf.model_name
         #stat_file='./stat/act_n_trainset_test_'+self.conf.model_name
 
-        path_stat= '../stat/'
-        f_name_stat='act_n_train'
-        stat_conf=['max','mean','max_999','max_99','max_98']
+        path_stat = self.conf.path_stat
+        f_name_stat_pre = self.conf.prefix_stat
+        
+        #f_name_stat='act_n_train'
+        #stat_conf=['max','mean','max_999','max_99','max_98']
         f_stat=collections.OrderedDict()
         r_stat=collections.OrderedDict()
 
@@ -1577,12 +1583,14 @@ class MNISTModel_CNN(tf.keras.layers.Layer):
         for idx_l, l in enumerate(self.layer_name):
             key=l+'_'+stat
 
-            f_stat[key]=open(path_stat+f_name_stat+'_'+key+'_'+self.conf.model_name,'r')
+            f_name_stat = f_name_stat_pre+'_'+key
+            f_name = os.path.join(path_stat, f_name_stat)
+            print('Loading stat from:', f_name)
+            f_stat[key]=open(f_name,'r')
             r_stat[key]=csv.reader(f_stat[key])
 
             for row in r_stat[key]:
                 self.dict_stat_r[l]=np.asarray(row,dtype=np.float32).reshape(self.dict_shape[l][1:])
-
             #if self.conf.f_ws:
                 #self.dict_stat_r['conv1']=self.dict_stat_r['conv1']/(1-1/np.power(2,8))
 
@@ -2030,14 +2038,74 @@ class MNISTModel_CNN(tf.keras.layers.Layer):
 
         return [loss_prec, loss_min, loss_max]
 
+    ##############################################################
+    # save activation for data-based normalization
+    ##############################################################
+    def save_activation(self):
 
+        path_stat=self.conf.path_stat
+        f_name_stat_pre=self.conf.prefix_stat
 
+        stat_conf=['max_999']
+        f_stat=collections.OrderedDict()
 
+        # 定义需要保存统计信息的层
+        # 注意：这里需要根据 MNISTModel_CNN 的层结构来定义
+        self.layer_name_write_stat=[
+            'in',
+            'conv1',
+            'conv2',
+            'fc1',
+        ]
 
+        #
+        threads=[]
 
+        for idx_l, l in enumerate(self.layer_name_write_stat):
+            for idx_c, c in enumerate(stat_conf):
+                key=l+'_'+c
 
+                f_name_stat = f_name_stat_pre+'_'+key
+                f_name=os.path.join(path_stat,f_name_stat)
 
+                f_stat[key]=open(f_name,'w')
 
+                threads.append(threading.Thread(target=self.write_stat, args=(f_stat[key], l, c)))
 
+        for thread in threads:
+            thread.start()
 
+        for thread in threads:
+            thread.join()
 
+    def write_stat(self, f_stat, layer_name, stat_conf_name):
+        print('write_stat func')
+
+        l = layer_name
+        c = stat_conf_name
+        s_layer=self.dict_stat_w[l] # 注意：这里可能需要改为 .numpy() 如果它还没被转换
+
+        # 检查 s_layer 是否是 Tensor，如果是则转换为 numpy
+        if isinstance(s_layer, tf.Tensor) or isinstance(s_layer, tf.Variable):
+             s_layer = s_layer.numpy()
+
+        self._write_stat(f_stat,s_layer,c)
+
+    def _write_stat(self, f_stat, s_layer, conf_name):
+        print('stat cal: '+conf_name)
+
+        if conf_name=='max':
+            stat=np.max(s_layer,axis=0).flatten()
+        elif conf_name=='max_999':
+            stat=np.nanpercentile(s_layer,99.9,axis=0).flatten()
+        elif conf_name=='max_99':
+            stat=np.nanpercentile(s_layer,99,axis=0).flatten()
+        elif conf_name=='max_98':
+            stat=np.nanpercentile(s_layer,98,axis=0).flatten()
+        else:
+            print('stat confiugration not supported')
+
+        print('stat write')
+        wr_stat=csv.writer(f_stat)
+        wr_stat.writerow(stat)
+        f_stat.close()

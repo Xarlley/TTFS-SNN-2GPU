@@ -6,3 +6,10 @@ logs/
 venv/
 models_ckpt/
 /tensorboard/
+/__pycache__
+*.pyc
+/dataset_downloaded/
+/dataset_downloaded/mnist/
+/dataset_downloaded/mnist_float/
+/dataset_downloaded/mnist_float/*.bin
+/exported_models/*
